@@ -1,0 +1,6 @@
+{
+  "name": "Laporan Harian P2M — BNN Kabupaten Gorontalo",
+  "description": "Aplikasi penyusun laporan harian kegiatan Seksi Pencegahan dan Pemberdayaan Masyarakat (P2M) BNN Kabupaten Gorontalo dengan integrasi otomatis AI dan pratinjau format WhatsApp kedinasan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
