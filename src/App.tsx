@@ -56,6 +56,14 @@ export default function App() {
   // Confirmation Modal
   const [isResetModalOpen, setIsResetModalOpen] = useState<boolean>(false);
 
+  // Background health check status for deployment diagnostics
+  const [backendHealth, setBackendHealth] = useState<{
+    checked: boolean;
+    hasKey: boolean;
+    environment?: string;
+    error?: string;
+  }>({ checked: false, hasKey: true });
+
   // References for debounce and race-condition cancellation
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
@@ -70,6 +78,37 @@ export default function App() {
     setThemeId(newTheme);
     localStorage.setItem(THEME_STORAGE_KEY, newTheme);
   };
+
+  // Check backend health on initial load to verify API key presence
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/health')
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (isMounted) {
+          setBackendHealth({
+            checked: true,
+            hasKey: Boolean(data.hasGeminiKey),
+            environment: data.environment,
+          });
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          setBackendHealth({
+            checked: true,
+            hasKey: false,
+            error: err.message,
+          });
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Form field updater with automatic draft persistence
   const handleFormChange = (updatedFields: Partial<FormDataState>) => {
@@ -99,7 +138,6 @@ export default function App() {
 
   // Reset form handler
   const handleConfirmReset = () => {
-    // Cancel any active AI request
     if (activeAbortControllerRef.current) {
       activeAbortControllerRef.current.abort();
       activeAbortControllerRef.current = null;
@@ -189,20 +227,48 @@ export default function App() {
           signal: abortController.signal,
         });
 
-        const data = await response.json();
-
         // Check if request is obsolete due to newer requests
         if (currentRequestId !== requestIdCounterRef.current) {
           return;
         }
 
-        if (response.ok && data.success && data.text) {
+        const contentType = response.headers.get('content-type') || '';
+        let data: any = null;
+
+        if (contentType.includes('application/json')) {
+          try {
+            data = await response.json();
+          } catch (jsonErr) {
+            console.error('Gagal parsing JSON respons:', jsonErr);
+          }
+        } else {
+          const rawText = await response.text();
+          console.warn('Respons non-JSON diterima dari server:', response.status, rawText.slice(0, 100));
+        }
+
+        if (response.ok && data?.success && data?.text) {
           setAiResultText(data.text);
           setAiStatus('success');
           lastProcessedKeyRef.current = currentPayloadKey;
         } else {
           setAiStatus('fallback');
-          setAiErrorMessage(data.error || 'Gagal memproses hasil kegiatan melalui AI');
+          let friendlyError = data?.error;
+          if (!friendlyError) {
+            if (response.status === 404) {
+              friendlyError = 'Endpoint backend /api/expand-results tidak ditemukan (404). Pastikan deployment Vercel memiliki folder /api.';
+            } else if (response.status === 503) {
+              friendlyError = 'GEMINI_API_KEY belum dikonfigurasi di Environment Variables Vercel (Project Settings > Environment Variables).';
+            } else if (response.status === 429) {
+              friendlyError = 'Batas kuota Gemini API tercapai (Rate Limit 429). Silakan tunggu sebentar.';
+            } else if (response.status === 401 || response.status === 403) {
+              friendlyError = 'GEMINI_API_KEY tidak valid atau izin akses ditolak oleh Google AI Studio.';
+            } else if (response.status >= 500) {
+              friendlyError = `Server backend mengalami gangguan (HTTP ${response.status}).`;
+            } else {
+              friendlyError = `Gagal memproses AI (Status ${response.status}). Menggunakan poin asli.`;
+            }
+          }
+          setAiErrorMessage(friendlyError);
         }
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === 'AbortError') {
@@ -212,7 +278,7 @@ export default function App() {
         if (currentRequestId === requestIdCounterRef.current) {
           console.error('Error saat menghubungi backend AI:', error);
           setAiStatus('fallback');
-          setAiErrorMessage('Koneksi ke backend AI terputus. Menggunakan poin asli.');
+          setAiErrorMessage('Gagal terhubung ke endpoint backend AI. Periksa koneksi internet atau status deployment Vercel.');
         }
       } finally {
         if (currentRequestId === requestIdCounterRef.current) {
@@ -234,7 +300,7 @@ export default function App() {
       return;
     }
 
-    // 1300ms debounce (within 1200 - 1500ms range required)
+    // 1350ms debounce (within 1000 - 1500ms range required)
     debounceTimerRef.current = setTimeout(() => {
       triggerAiExpansion(formData);
     }, 1350);
@@ -267,6 +333,16 @@ export default function App() {
         
         {/* Informational civil service notice */}
         <InfoBanner theme={currentTheme} />
+
+        {/* Warning if backend reported missing key on deployment */}
+        {backendHealth.checked && !backendHealth.hasKey && (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 text-xs text-amber-900 flex items-start gap-2.5">
+            <span className="font-bold text-amber-800 shrink-0">Perhatian Konfigurasi Vercel:</span>
+            <span>
+              Variabel <code>GEMINI_API_KEY</code> belum terdeteksi di server Vercel. Fitur AI akan menggunakan poin asli sebagai cadangan sampai Anda menambahkan API Key di dashboard Vercel (<strong>Project Settings &gt; Environment Variables</strong>).
+            </span>
+          </div>
+        )}
 
         {/* 2-Column Responsive Layout: Left Form, Right WhatsApp Live Preview */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
