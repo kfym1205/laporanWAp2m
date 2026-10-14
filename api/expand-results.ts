@@ -1,18 +1,30 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleGenAI } from '@google/genai';
 
-const SYSTEM_INSTRUCTION = `Anda adalah asisten penyusun laporan harian resmi Seksi P2M BNN Kabupaten Gorontalo. Tugas Anda mengembangkan poin-poin hasil kegiatan menjadi uraian laporan kedinasan dalam Bahasa Indonesia yang formal, natural, runtut, jelas, dan ringkas.
+const SYSTEM_INSTRUCTION = `Anda adalah asisten penyusun laporan kedinasan untuk Seksi Pencegahan dan Pemberdayaan Masyarakat (P2M) BNN Kabupaten Gorontalo. Tugas Anda adalah mengembangkan catatan singkat atau poin-poin hasil kegiatan menjadi narasi laporan bagian "HASIL KEGIATAN" yang mengalir, berbobot, formal, dan substantif seperti gaya narasi profesional.
 
-Ketentuan:
-- Hasil maksimal 2–3 paragraf.
-- Pertahankan seluruh fakta yang diberikan pengguna.
-- Jangan mengarang nama orang, jabatan, jumlah peserta, tanggal, angka, lokasi, materi, narasumber, capaian, atau hasil kegiatan.
-- Jangan menyimpulkan kegiatan berhasil mencapai target apabila informasi tersebut tidak tersedia.
-- Jangan menambahkan pernyataan normatif yang tidak didukung informasi input.
-- Gunakan bahasa kedinasan yang wajar dan tidak berlebihan.
-- Hindari pengulangan kalimat.
-- Jika poin input sangat singkat, kembangkan secara terbatas berdasarkan informasi yang benar-benar tersedia.
-- Keluarkan hanya uraian hasil kegiatan final, tanpa judul tambahan, catatan AI, atau penjelasan kepada pengguna.`;
+KETENTUAN UTAMA PENULISAN:
+1. Kalimat Pembuka:
+   - Awali uraian LANGSUNG dengan inti kegiatan dan tujuan pelaksanaannya (misal: "Kegiatan koordinasi dengan [Pihak terkait] dilaksanakan dalam rangka...", "Sosialisasi [Materi] diselenggarakan dengan tujuan untuk...").
+   - DILARANG KERAS mengawali narasi dengan hari/tanggal, waktu pelaksanaan, atau daftar nama petugas pelaksana (misal JANGAN PERNAH MENULIS: "Pada hari ..., tim Seksi P2M BNNK Gorontalo yang terdiri dari ... melaksanakan...", atau "Seksi P2M BNNK Gorontalo telah melaksanakan..."). Data tanggal, waktu, dan nama pelaksana sudah tercantum di bagian formulir lain sehingga tidak boleh diulang dalam narasi ini.
+
+2. Struktur & Substansi Narasi:
+   - Kembangkan isi menjadi 1–2 paragraf yang padat dan runtut (maksimal 3 paragraf jika materi kegiatan sangat luas).
+   - Uraikan secara jelas tujuan kegiatan, pokok pembahasan atau proses pelaksanaan, serta hasil, manfaat, atau tindak lanjut yang relevan.
+   - Sesuaikan dengan tipe kegiatan:
+     * Koordinasi/Audiensi: Jelaskan pihak yang dikoordinasikan, pokok bahasan, kesiapan dukungan, dan tujuan koordinasi.
+     * Sosialisasi/Penyuluhan/Bimtek: Jelaskan materi dan pesan kunci P4GN yang ditekankan, sasaran peserta, interaksi diskusi, serta pemahaman yang diharapkan terbangun.
+     * Asistensi/Advokasi/Pendampingan: Jelaskan fokus asistensi, komitmen para pihak, dan langkah penguatan yang diarahkan.
+
+3. Integritas Fakta:
+   - Pertahankan seluruh informasi faktual yang diberikan pengguna.
+   - Jangan mengarang fakta, kesepakatan, keputusan, jumlah peserta, atau capaian yang tidak didukung oleh input pengguna.
+   - Bedakan secara jelas antara hasil aktual yang sudah terlaksana dengan hasil/tindak lanjut yang masih diharapkan (gunakan frasa wajar seperti "diharapkan dapat mendukung...", "sebagai tindak lanjut...").
+
+4. Format Output:
+   - Keluarkan HANYA teks narasi hasil kegiatan final.
+   - Jangan menyertakan judul bagian ("D. HASIL KEGIATAN"), tanpa pengantar ("Berikut uraian..."), dan tanpa catatan penutup.
+   - Hindari tanda bintang ganda Markdown (**) di seluruh narasi.`;
 
 interface ExpandRequestBody {
   namaKegiatan?: string;
@@ -172,20 +184,22 @@ export default async function handler(
       : [];
     const cleanSumberDana = (sumberDana || '').trim().slice(0, 50);
 
-    const userPrompt = `Data Kegiatan Seksi P2M BNN Kabupaten Gorontalo:
-- Nama Kegiatan: ${cleanNamaKegiatan}
-- Hari & Tanggal: ${cleanHariTanggal}
-- Pukul: ${cleanWaktu || '-'}
-- Tempat: ${cleanTempat || '-'}
-- Pelaksana Kegiatan: ${cleanPelaksana.length > 0 ? cleanPelaksana.join(', ') : '-'}
-- Sumber Dana: ${cleanSumberDana || '-'}
+    const userPrompt = `Berikut adalah data dan catatan hasil kegiatan untuk disusun narasinya:
 
-Poin-poin inti hasil kegiatan lapangan yang dicatat pelaksana:
+Nama Kegiatan: ${cleanNamaKegiatan}
+${cleanTempat && cleanTempat !== '-' ? `Lokasi / Wilayah Kegiatan: ${cleanTempat}` : ''}
+
+Catatan Singkat / Poin-Poin Hasil Lapangan:
 """
 ${cleanPoinHasil}
 """
 
-Instruksi: Susun menjadi uraian resmi "D. HASIL KEGIATAN" sebanyak maksimal 2–3 paragraf kedinasan yang runtut, lugas, dan akurat sesuai fakta di atas. Jangan sertakan awalan seperti "D. HASIL KEGIATAN", tanpa tanda bintang ganda Markdown tebal di seluruh uraian, dan jangan berikan catatan pembuka atau penutup.`;
+Instruksi Khusus Penyusunan:
+1. Awali kalimat pertama LANGSUNG dengan inti kegiatan dan tujuan pelaksanaannya.
+2. DILARANG mengawali dengan hari/tanggal ("Pada hari...") dan DILARANG menyebutkan daftar nama petugas pelaksana karena data tersebut sudah tercantum di bagian lain laporan.
+3. Kembangkan menjadi narasi kedinasan 1–2 paragraf (maksimal 3 paragraf) yang mengalir wajar, substantif, dan runtut sesuai konteks dan jenis kegiatan.
+4. Uraikan pokok pembahasan/proses pelaksanaan serta manfaat atau tindak lanjut yang relevan. Jangan mengarang data, angka, atau kesepakatan yang tidak tercantum di input; bedakan hasil aktual dengan harapan tindak lanjut.
+5. Berikan HANYA teks narasi hasil kegiatan final tanpa judul tambahan atau pengantar.`;
 
     const candidateModels = [
       process.env.GEMINI_MODEL || 'gemini-3.8-flash',
